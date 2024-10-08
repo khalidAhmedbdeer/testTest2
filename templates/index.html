@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Drag and Drop Multiple Image Resizer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        h1 {
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        #buttons-container {
+            text-align: center;
+            margin: 20px auto;
+        }
+
+        #buttons-container button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #buttons-container button:hover {
+            background-color: #0056b3;
+        }
+
+        #buttons-container button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #progress-container {
+            width: 80%;
+            max-width: 600px;
+            height: 20px;
+            background-color: #f3f3f3;
+            margin: 20px auto;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #28a745;
+            border-radius: 10px;
+            transition: width 0.2s;
+        }
+
+        #progress-text {
+            text-align: center;
+            margin-top: 5px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        #drop-area {
+            border: 2px dashed #ccc;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            text-align: center;
+            transition: border 0.3s;
+        }
+
+        #drop-area.highlight {
+            border-color: #333;
+        }
+
+        #drop-area p {
+            font-size: 16px;
+            color: #666;
+        }
+
+        #drop-area .button {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #28a745;
+            color: white;
+            margin-top: 10px;
+            text-decoration: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #drop-area .button:hover {
+            background-color: #218838;
+        }
+
+        #fileElem {
+            display: none;
+        }
+
+        #gallery {
+            margin: 50px auto;
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .gallery-item {
+            margin: 10px;
+        }
+
+        .gallery-item a {
+            text-decoration: none;
+        }
+
+        .gallery-item img {
+            width: 150px;
+            display: block;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Drag and Drop to Resize Multiple JPEG/JPG Images</h1>
+
+    <div id="buttons-container">
+        <button id="download-all-btn" onclick="downloadAll()" disabled>Download All as ZIP</button>
+        <button id="clear-btn" onclick="clearGallery()" disabled>Clear</button>
+    </div>
+
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+    <div id="progress-text">Upload</div>
+
+    <div id="drop-area">
+        <form id="upload-form" enctype="multipart/form-data" method="post">
+            <p>Drag and drop JPEG/JPG images here, or click to select images.</p>
+            <input type="file" id="fileElem" name="images" accept=".jpeg, .jpg" multiple required onchange="handleFiles(this.files)">
+            <label class="button" for="fileElem">Select files</label>
+        </form>
+    </div>
+
+    <div id="gallery"></div>
+
+    <script>
+        let dropArea = document.getElementById('drop-area');
+        let downloadAllButton = document.getElementById('download-all-btn');
+        let clearButton = document.getElementById('clear-btn');
+        let progressBar = document.getElementById('progress-bar');
+        let progressText = document.getElementById('progress-text');
+
+        progressBar.style.width = '0%';
+        progressText.textContent = 'Upload';
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            dropArea.classList.add('highlight');
+        }
+
+        function unhighlight() {
+            dropArea.classList.remove('highlight');
+        }
+
+        dropArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            let dt = e.dataTransfer;
+            let files = dt.files;
+
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            clearGallery(false);
+
+            let formData = new FormData();
+
+            for (let i = 0; i < files.length; i++) {
+                formData.append('images', files[i]);
+            }
+
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Uploading...';
+
+            let xhr = new XMLHttpRequest();
+
+            xhr.open('POST', '/upload', true);
+
+            // Track upload progress
+            xhr.upload.addEventListener('progress', function (e) {
+                if (e.lengthComputable) {
+                    let percentComplete = (e.loaded / e.total) * 50;  // 50% for upload
+                    progressBar.style.width = percentComplete + '%';
+                    progressText.textContent = 'Uploading ' + Math.round(percentComplete) + '%';
+                }
+            });
+
+            xhr.onreadystatechange = function () {
+                if (xhr.readyState === XMLHttpRequest.DONE) {
+                    if (xhr.status === 200) {
+                        let data = JSON.parse(xhr.responseText);
+                        processFiles(data.files);
+                    } else {
+                        console.error('Error:', xhr.statusText);
+                        alert('An error occurred during the upload.');
+                        progressBar.style.width = '0%';
+                        progressText.textContent = 'Upload';
+                    }
+                }
+            };
+
+            xhr.send(formData);
+        }
+
+        function processFiles(files) {
+            let totalFiles = files.length;
+            let processedFiles = 0;
+
+            function processNextFile() {
+                if (processedFiles < totalFiles) {
+                    let file = files[processedFiles];
+
+                    let galleryItem = document.createElement('div');
+                    galleryItem.classList.add('gallery-item');
+
+                    let link = document.createElement('a');
+                    link.href = file.url;
+                    link.target = '_blank';
+
+                    let img = document.createElement('img');
+                    img.src = file.url;
+                    link.appendChild(img);
+                    galleryItem.appendChild(link);
+
+                    document.getElementById('gallery').appendChild(galleryItem);
+
+                    processedFiles++;
+                    let percentComplete = 50 + (processedFiles / totalFiles) * 50;  // The remaining 50% for processing
+                    progressBar.style.width = percentComplete + '%';
+                    progressText.textContent = 'Processing ' + Math.round(percentComplete) + '%';
+
+                    // Force UI update between file processing
+                    requestAnimationFrame(processNextFile);
+                } else {
+                    progressText.textContent = 'Completed';
+                    downloadAllButton.disabled = false;
+                    clearButton.disabled = false;
+                }
+            }
+
+            // Start processing the first file
+            processNextFile();
+        }
+
+        function clearGallery(disableButtons = true) {
+            document.getElementById('gallery').innerHTML = '';
+
+            if (disableButtons) {
+                downloadAllButton.disabled = true;
+                clearButton.disabled = true;
+            }
+
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Upload';
+        }
+
+        function downloadAll() {
+            if (downloadAllButton.disabled) {
+                alert('No images available for download.');
+                return;
+            }
+
+            fetch('/download-all')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('No files available for download.');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    let url = window.URL.createObjectURL(blob);
+                    let a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'resized_images.zip';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                })
+                .catch(error => alert(error.message));
+        }
+    </script>
+
+</body>
+</html>

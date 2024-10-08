@@ -34,6 +34,8 @@ else:
 # Store the filenames of resized images globally for creating the ZIP
 resized_filenames = []
 
+@app.route('/')
+
 def index():
     return render_template('index.html')
 
